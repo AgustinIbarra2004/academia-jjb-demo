@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Panel Profesor - JJB</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      color: #222;
+    }
+
+    header {
+      background: #111827;
+      color: white;
+      padding: 24px;
+      text-align: center;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 32px;
+    }
+
+    header p {
+      margin-top: 8px;
+      color: #d1d5db;
+    }
+
+    main {
+      max-width: 1100px;
+      margin: 30px auto;
+      padding: 0 16px 30px;
+    }
+
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .estado {
+      font-size: 14px;
+      color: #555;
+    }
+
+    button {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    button:hover {
+      background: #1d4ed8;
+    }
+
+    .resumen {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .resumen-card {
+      background: white;
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+    }
+
+    .resumen-card h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      color: #374151;
+    }
+
+    .resumen-card .numero {
+      font-size: 34px;
+      font-weight: bold;
+      color: #111827;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+    }
+
+    .card h2 {
+      margin-top: 0;
+      margin-bottom: 16px;
+      font-size: 22px;
+    }
+
+    .lista {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .item {
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 12px;
+      background: #fafafa;
+    }
+
+    .item strong {
+      display: block;
+      font-size: 16px;
+      margin-bottom: 6px;
+    }
+
+    .dato {
+      font-size: 14px;
+      color: #444;
+      margin: 2px 0;
+    }
+
+    .vacio {
+      color: #777;
+      font-style: italic;
+    }
+
+    .volver {
+      display: inline-block;
+      margin-bottom: 18px;
+      text-decoration: none;
+      color: #2563eb;
+      font-weight: bold;
+    }
+
+    @media (max-width: 768px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Panel del Profesor</h1>
+    <p>Reservas y asistencias del turno</p>
+  </header>
+
+  <main>
+    <a class="volver" href="/">← Volver al inicio</a>
+
+    <div class="top-bar">
+      <div id="estado" class="estado">Cargando datos...</div>
+      <button id="btnRecargar">Recargar</button>
+    </div>
+
+    <section class="resumen">
+      <div class="resumen-card">
+        <h2>Reservados</h2>
+        <div id="totalReservados" class="numero">0</div>
+      </div>
+
+      <div class="resumen-card">
+        <h2>Presentes</h2>
+        <div id="totalPresentes" class="numero">0</div>
+      </div>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Alumnos reservados</h2>
+        <div id="reservados" class="lista"></div>
+      </section>
+
+      <section class="card">
+        <h2>Alumnos presentes</h2>
+        <div id="presentes" class="lista"></div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const contenedorReservados = document.getElementById("reservados");
+    const contenedorPresentes = document.getElementById("presentes");
+    const estado = document.getElementById("estado");
+    const btnRecargar = document.getElementById("btnRecargar");
+    const totalReservados = document.getElementById("totalReservados");
+    const totalPresentes = document.getElementById("totalPresentes");
+
+    function crearItem(persona) {
+      return `
+        <div class="item">
+          <strong>${persona.nombre} ${persona.apellido}</strong>
+          <div class="dato">Fecha: ${persona.fecha}</div>
+          <div class="dato">Hora: ${persona.hora}</div>
+          <div class="dato">Estado: ${persona.estado}</div>
+        </div>
+      `;
+    }
+
+    function renderLista(contenedor, lista, textoVacio) {
+      if (!lista.length) {
+        contenedor.innerHTML = `<p class="vacio">${textoVacio}</p>`;
+        return;
+      }
+
+      contenedor.innerHTML = lista.map(crearItem).join("");
+    }
+
+    async function cargarReservasProfesor() {
+      estado.textContent = "Cargando datos...";
+
+      try {
+        const respuesta = await fetch("/api/profesor/reservas");
+        const data = await respuesta.json();
+
+        const reservados = data.reservados || [];
+        const presentes = data.presentes || [];
+
+        totalReservados.textContent = reservados.length;
+        totalPresentes.textContent = presentes.length;
+
+        renderLista(
+          contenedorReservados,
+          reservados,
+          "No hay alumnos reservados."
+        );
+
+        renderLista(
+          contenedorPresentes,
+          presentes,
+          "No hay alumnos presentes."
+        );
+
+        estado.textContent = "Datos cargados correctamente.";
+      } catch (error) {
+        estado.textContent = "Error al cargar los datos.";
+        totalReservados.textContent = "0";
+        totalPresentes.textContent = "0";
+        contenedorReservados.innerHTML = `<p class="vacio">No se pudieron cargar los reservados.</p>`;
+        contenedorPresentes.innerHTML = `<p class="vacio">No se pudieron cargar los presentes.</p>`;
+        console.error(error);
+      }
+    }
+
+    btnRecargar.addEventListener("click", cargarReservasProfesor);
+
+    cargarReservasProfesor();
+  </script>
+</body>
+</html>

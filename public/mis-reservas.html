@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Mis reservas</title>
+  <style>
+    body {
+      font-family: Arial;
+      background: #f3f4f6;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    .card {
+      background: white;
+      padding: 16px;
+      border-radius: 12px;
+      margin-bottom: 12px;
+    }
+
+    button {
+      margin-top: 10px;
+      padding: 8px 12px;
+      border: none;
+      background: red;
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .volver {
+      display: block;
+      margin-bottom: 20px;
+      text-decoration: none;
+      color: blue;
+    }
+  </style>
+</head>
+<body>
+
+<a class="volver" href="/">← Volver</a>
+
+<h1>Mis reservas</h1>
+
+<div id="lista"></div>
+
+<script>
+const usuarioId = 1;
+const lista = document.getElementById("lista");
+
+async function cargar() {
+    const res = await fetch(`/api/mis-reservas/${usuarioId}`);
+    const data = await res.json();
+
+    lista.innerHTML = data.map(r => `
+        <div class="card">
+            <strong>Turno ${r.turno_id}</strong><br>
+            Fecha: ${r.fecha}<br>
+            Hora: ${r.hora}<br>
+            Estado: ${r.estado}<br>
+            <button onclick="cancelar(${r.id})">Cancelar</button>
+        </div>
+    `).join("");
+}
+
+async function cancelar(id) {
+    await fetch(`/api/reservas/${id}`, { method: "DELETE" });
+    cargar();
+}
+
+cargar();
+</script>
+
+</body>
+</html>

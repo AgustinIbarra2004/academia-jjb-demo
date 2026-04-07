@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Check-in - Academia JJB</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f3f4f6;
+      color: #111827;
+    }
+
+    header {
+      background: #111827;
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+
+    main {
+      max-width: 700px;
+      margin: 30px auto;
+      padding: 0 16px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 24px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+    }
+
+    .mensaje {
+      margin-bottom: 20px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      background: #e5e7eb;
+      color: #111827;
+      font-size: 14px;
+    }
+
+    label {
+      display: block;
+      margin-top: 14px;
+      margin-bottom: 6px;
+      font-weight: bold;
+    }
+
+    input,
+    select {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      font-size: 15px;
+    }
+
+    button {
+      margin-top: 18px;
+      width: 100%;
+      border: none;
+      border-radius: 10px;
+      padding: 12px;
+      background: #2563eb;
+      color: white;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #1d4ed8;
+    }
+
+    .dato {
+      margin: 8px 0;
+      color: #374151;
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Check-in de llegada</h1>
+    <p>Academia JJB</p>
+  </header>
+
+  <main>
+    <div id="mensaje" class="mensaje">Cargando turnos...</div>
+
+    <div class="card">
+      <div class="dato">
+        Esta pantalla simula el escaneo del QR de la academia.
+      </div>
+
+      <label for="turno">Seleccionar turno</label>
+      <select id="turno"></select>
+
+      <label for="codigo_qr">Código QR</label>
+      <input
+        type="text"
+        id="codigo_qr"
+        value="JJB-ACADEMIA-2026"
+        placeholder="Ingresá el código QR"
+      />
+
+      <button id="btnCheckin">Confirmar llegada</button>
+    </div>
+  </main>
+
+  <script>
+    const mensaje = document.getElementById("mensaje");
+    const selectTurno = document.getElementById("turno");
+    const inputQr = document.getElementById("codigo_qr");
+    const btnCheckin = document.getElementById("btnCheckin");
+
+    const usuarioId = 1;
+
+    async function cargarTurnos() {
+      mensaje.textContent = "Cargando turnos...";
+
+      try {
+        const respuesta = await fetch("/api/turnos");
+        const turnos = await respuesta.json();
+
+        selectTurno.innerHTML = turnos
+          .map(
+            turno => `
+              <option value="${turno.id}">
+                Turno ${turno.id} - ${turno.fecha} ${turno.hora}
+              </option>
+            `
+          )
+          .join("");
+
+        mensaje.textContent = "Seleccioná tu turno y confirmá la llegada.";
+      } catch (error) {
+        mensaje.textContent = "Error al cargar los turnos.";
+        console.error(error);
+      }
+    }
+
+    async function hacerCheckin() {
+      const turnoId = Number(selectTurno.value);
+      const codigoQr = inputQr.value.trim();
+
+      if (!turnoId || !codigoQr) {
+        mensaje.textContent = "Faltan datos para hacer el check-in.";
+        return;
+      }
+
+      try {
+        const respuesta = await fetch("/api/checkin", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            usuario_id: usuarioId,
+            turno_id: turnoId,
+            codigo_qr: codigoQr
+          })
+        });
+
+        const data = await respuesta.json();
+
+        if (!respuesta.ok) {
+          mensaje.textContent = data.error || "No se pudo registrar la llegada.";
+          return;
+        }
+
+        mensaje.textContent = `Check-in registrado correctamente para el turno ${turnoId}.`;
+      } catch (error) {
+        mensaje.textContent = "Error al conectar con el servidor.";
+        console.error(error);
+      }
+    }
+
+    btnCheckin.addEventListener("click", hacerCheckin);
+
+    cargarTurnos();
+  </script>
+</body>
+</html>

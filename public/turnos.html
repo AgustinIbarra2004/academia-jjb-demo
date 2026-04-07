@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Turnos - Academia JJB</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f3f4f6;
+      color: #111827;
+    }
+
+    header {
+      background: #111827;
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+
+    main {
+      max-width: 900px;
+      margin: 30px auto;
+      padding: 0 16px;
+    }
+
+    .volver {
+      display: inline-block;
+      margin-bottom: 16px;
+      text-decoration: none;
+      color: #2563eb;
+      font-weight: bold;
+    }
+
+    .mensaje {
+      margin-bottom: 20px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      background: #e5e7eb;
+      font-size: 14px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+    }
+
+    .card h2 {
+      margin-top: 0;
+      margin-bottom: 12px;
+      font-size: 22px;
+    }
+
+    .dato {
+      margin: 6px 0;
+      color: #374151;
+      font-size: 15px;
+    }
+
+    .ocupado {
+      color: #dc2626;
+      font-weight: bold;
+    }
+
+    button {
+      margin-top: 14px;
+      width: 100%;
+      border: none;
+      border-radius: 10px;
+      padding: 12px;
+      background: #2563eb;
+      color: white;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #1d4ed8;
+    }
+
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Turnos disponibles</h1>
+    <p>Academia JJB</p>
+  </header>
+
+  <main>
+    <a class="volver" href="/">← Volver al inicio</a>
+
+    <div id="mensaje" class="mensaje">Cargando turnos...</div>
+    <div id="contenedorTurnos" class="grid"></div>
+  </main>
+
+  <script>
+    const contenedorTurnos = document.getElementById("contenedorTurnos");
+    const mensaje = document.getElementById("mensaje");
+
+    const usuarioId = 1;
+
+    function crearCardTurno(turno) {
+      const sinLugar = turno.disponibles <= 0;
+
+      return `
+        <div class="card">
+          <h2>Turno #${turno.id}</h2>
+          <div class="dato"><strong>Fecha:</strong> ${turno.fecha}</div>
+          <div class="dato"><strong>Hora:</strong> ${turno.hora}</div>
+          <div class="dato"><strong>Cupo:</strong> ${turno.cupo_maximo}</div>
+          <div class="dato"><strong>Ocupados:</strong> ${turno.ocupados}</div>
+          <div class="dato">
+            <strong>Disponibles:</strong> 
+            <span class="${sinLugar ? "ocupado" : ""}">
+              ${turno.disponibles}
+            </span>
+          </div>
+
+          ${
+            sinLugar
+              ? `<button disabled>Sin cupo</button>`
+              : `<button onclick="reservarTurno(${turno.id})">Reservar turno</button>`
+          }
+        </div>
+      `;
+    }
+
+    async function cargarTurnos() {
+      mensaje.textContent = "Cargando turnos...";
+
+      try {
+        const respuesta = await fetch("/api/turnos");
+        const turnos = await respuesta.json();
+
+        contenedorTurnos.innerHTML = turnos.map(crearCardTurno).join("");
+        mensaje.textContent = "Elegí un turno para reservar.";
+      } catch (error) {
+        mensaje.textContent = "Error al cargar los turnos.";
+        console.error(error);
+      }
+    }
+
+    async function reservarTurno(turnoId) {
+      mensaje.textContent = "Procesando reserva...";
+
+      try {
+        const respuesta = await fetch("/api/reservas", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            usuario_id: usuarioId,
+            turno_id: turnoId
+          })
+        });
+
+        const data = await respuesta.json();
+
+        if (!respuesta.ok) {
+          mensaje.textContent = data.error || "No se pudo reservar.";
+          return;
+        }
+
+        mensaje.textContent = `Reserva creada correctamente para el turno ${turnoId}.`;
+
+        // 🔥 refresca los turnos automáticamente
+        cargarTurnos();
+      } catch (error) {
+        mensaje.textContent = "Error al conectar con el servidor.";
+        console.error(error);
+      }
+    }
+
+    cargarTurnos();
+  </script>
+</body>
+</html>
