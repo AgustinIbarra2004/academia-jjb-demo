@@ -1,224 +1,369 @@
+const dotenv = require("dotenv").config();
 const express = require("express");
 const path = require("path");
 const app = express();
-
+const pool = require("./db");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const JWT_SECRET = process.env.JWT_SECRET;
+ 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
-// Datos en memoria (para el demo)
-const usuarios = [{
-  id: 1,
-  nombre: "Agustin",
-  apellido: "Ibarra",
-  email: "agus@gmail.com",
-  password: "1234",
-  estado: "activo",
-  rol: "alumno"
-}];
 
+pool.query("SELECT NOW()", (err, result) => {
+  if (err) {
+    console.error("Error conectando a la base de datos:", err);
+  } else {
+    console.log("Base de datos conectada:", result.rows);
+  }
+});
 
+function verificarToken(req, res, next) {
+  const authHeader = req.headers.authorization;
 
-const turnos = [
-  { id: 1, fecha: "2026-04-01", hora: "07:00", cupo_maximo: 15 },
-  { id: 2, fecha: "2026-04-03", hora: "07:00", cupo_maximo: 15 },
-  { id: 3, fecha: "2026-04-05", hora: "07:00", cupo_maximo: 15 }
-];
+  if (!authHeader) {
+    return res.status(401).json({ error: "Token no enviado" });
+  }
 
-const reservas = [];
+  const token = authHeader.split(" ")[1];
 
-app.get("/api/turnos", (req, res) => {
-    const turnosConInfo = turnos.map(turno => {
-        const ocupados = reservas.filter(r => r.turno_id === turno.id).length;
+  if (!token) {
+    return res.status(401).json({ error: "Token inválido" });
+  }
+
+  try {
+    const usuario = jwt.verify(token, JWT_SECRET);
+
+    req.usuario = usuario;
+
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: "Token inválido o expirado" });
+  }
+}
+
+app.get("/api/perfil", verificarToken, (req, res) => {
+  res.json({
+    ok: true,
+    usuario: req.usuario
+  });
+});
+app.get("/api/turnos", async (req, res) => {
+  try {
+    const resultado = await pool.query("SELECT * FROM turnos");
+
+    const turnosConInfo = await Promise.all(
+      resultado.rows.map(async (turno) => {
+        const cantidadResultado = await pool.query(
+          "SELECT COUNT(*) FROM reservas WHERE turno_id = $1",
+          [turno.id]
+        );
+
+        const ocupados = Number(cantidadResultado.rows[0].count);
         const disponibles = turno.cupo_maximo - ocupados;
 
         return {
-            ...turno,
-            ocupados,
-            disponibles
+          ...turno,
+          ocupados,
+          disponibles,
         };
-    });
+      })
+    );
 
     res.json(turnosConInfo);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
 });
 
-app.get("/api/profesor/reservas", (req, res) => {
-    const datos = reservas.map(reserva => {
-        const usuario = usuarios.find(u => u.id === reserva.usuario_id);
-        const turno = turnos.find(t => t.id === reserva.turno_id);
+app.get("/api/profesor/reservas", verificarToken, async (req, res) => {
+  try {
+    if (req.usuario.rol !== "profesor") {
+      return res.status(403).json({ error: "No tenés permiso para ver esta información" });
+    }
 
-        return {
-            id: reserva.id,
-            nombre: usuario ? usuario.nombre : "Sin nombre",
-            apellido: usuario ? usuario.apellido : "Sin apellido",
-            fecha: turno ? turno.fecha : "Sin fecha",
-            hora: turno ? turno.hora : "Sin hora",
-            estado: reserva.estado
-        };
-    });
+    const resultado = await pool.query(`
+      SELECT reservas.id, usuarios.nombre, usuarios.apellido, turnos.fecha, turnos.hora, reservas.estado
+      FROM reservas
+      JOIN usuarios ON reservas.usuario_id = usuarios.id
+      JOIN turnos ON reservas.turno_id = turnos.id
+    `);
+
+    const datos = resultado.rows;
 
     const reservados = datos.filter(r => r.estado === "reservado");
     const presentes = datos.filter(r => r.estado === "presente");
 
     res.json({ reservados, presentes });
-});
-app.get("/api/mis-reservas/:usuario_id", (req, res) => {
-    const usuario_id = Number(req.params.usuario_id);
-
-    if (isNaN(usuario_id)) {
-        return res.status(400).json({ error: "ID inválido" });
-    }
-
-    const misReservas = reservas
-        .filter(r => r.usuario_id === usuario_id)
-        .map(reserva => {
-            const turno = turnos.find(t => t.id === reserva.turno_id);
-
-            return {
-                id: reserva.id,
-                turno_id: reserva.turno_id,
-                fecha: turno ? turno.fecha : "",
-                hora: turno ? turno.hora : "",
-                estado: reserva.estado
-            };
-        });
-
-    res.json(misReservas);
-});
-app.post("/api/register", (req, res) => {
-    const { nombre, apellido, email, password } = req.body;
-
-    // Validaciones básicas
-    if (!nombre || !apellido || !email || !password) {
-        return res.status(400).json({ error: "Faltan datos" });
-    }
-
-    // Verificar email repetido
-    const existe = usuarios.find(u => u.email === email);
-    if (existe) {
-        return res.status(400).json({ error: "Email ya registrado" });
-    }
-
-    const nuevoUsuario = {
-        id: usuarios.length + 1,
-        nombre,
-        apellido,
-        email,
-        password,
-        estado: "activo",
-        rol: "alumno"
-    };
-
-    usuarios.push(nuevoUsuario);
-
-    res.json({ ok: true, usuario: nuevoUsuario });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
 });
 
-app.post("/api/login", (req, res) => {
-    const { email, password } = req.body;
-    
-    if (!email || !password) {
-        return res.status(400).json({ error: "Uno de los datos es incorrecto" });
+app.get("/api/mis-reservas", verificarToken, async (req, res) => {
+  try {
+    const usuario_id = req.usuario.id;
+
+    const resultado = await pool.query(
+      `
+      SELECT reservas.id, reservas.turno_id, turnos.fecha, turnos.hora, reservas.estado
+      FROM reservas
+      JOIN turnos ON reservas.turno_id = turnos.id
+      WHERE reservas.usuario_id = $1
+      `,
+      [usuario_id]
+    );
+
+    res.json(resultado.rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+});
+
+app.post("/api/register", async (req, res) => {
+  const { nombre, apellido, email, password } = req.body;
+
+  if (!nombre || !apellido || !email || !password) {
+    return res.status(400).json({ error: "Faltan datos" });
+  }
+
+  try {
+    const existe = await pool.query(
+      "SELECT id FROM usuarios WHERE email = $1",
+      [email]
+    );
+
+    if (existe.rows.length > 0) {
+      return res.status(400).json({ error: "Email ya registrado" });
     }
 
-    const usuario = usuarios.find(u => u.email === email);
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const resultado = await pool.query(
+      `INSERT INTO usuarios (nombre, apellido, email, password, estado, rol)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [nombre, apellido, email, passwordHash, "activo", "alumno"]
+    );
+
+    const usuario = resultado.rows[0];
+
+    delete usuario.password;
+
+    res.json({ ok: true, usuario });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+});
+
+app.post("/api/login", async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: "Uno de los datos es incorrecto" });
+  }
+
+  try {
+    const resultado = await pool.query(
+      "SELECT * FROM usuarios WHERE email = $1",
+      [email]
+    );
+
+    const usuario = resultado.rows[0];
 
     if (!usuario) {
-        return res.status(400).json({ error: "El usuario no existe" });
+      return res.status(400).json({ error: "El usuario no existe" });
     }
 
-    if (usuario.password !== password) {
-        return res.status(400).json({ error: "La contraseña es incorrecta" });
+    const valido = await bcrypt.compare(password, usuario.password);
+
+    if (!valido) {
+     return res.status(400).json({ error: "Contraseña incorrecta" });
     }
 
     if (usuario.estado !== "activo") {
-        return res.status(403).json({ error: "La cuenta no está activa" });
-    }
+  return res.status(403).json({ error: "La cuenta no está activa" });
+}
 
-    res.json({ ok: true, usuario });
+// 🔥 CREAR TOKEN
+    const token = jwt.sign(
+  {
+    id: usuario.id,
+    email: usuario.email,
+    rol: usuario.rol
+  },
+  JWT_SECRET,
+  { expiresIn: "2h" }
+);
+
+// 🔒 SACAR PASSWORD
+const usuarioSeguro = { ...usuario };
+delete usuarioSeguro.password;
+
+// 🔥 RESPUESTA FINAL
+res.json({
+  ok: true,
+  usuario: usuarioSeguro,
+  token
 });
 
-  app.post("/api/reservas", (req, res) => {
-    const { usuario_id, turno_id } = req.body;
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+});
 
-    if (!usuario_id || !turno_id) {
-        return res.status(400).json({ error: "Faltan datos" });
-    }
+app.post("/api/reservas", verificarToken, async (req, res) => {
+  try {
+    const usuario_id = req.usuario.id;
+    const { turno_id } = req.body;
 
-    const usuario = usuarios.find(u => u.id === usuario_id);
-    const turno = turnos.find(t => t.id === turno_id);
+   if (!turno_id) {
+  return res.status(400).json({ error: "Falta el turno" });
+  }
 
-    if (!turno) {
-        return res.status(400).json({ error: "Turno no encontrado" });
-    }
+    const usuarioResultado = await pool.query(
+      "SELECT * FROM usuarios WHERE id = $1",
+      [usuario_id]
+    );
+    const usuario = usuarioResultado.rows[0];
 
     if (!usuario) {
-        return res.status(400).json({ error: "Usuario no encontrado" });
+      return res.status(404).json({ error: "Usuario no encontrado" });
     }
 
-    const existeReserva = reservas.find(r =>
-        r.usuario_id === usuario_id && r.turno_id === turno_id
+    const turnoResultado = await pool.query(
+      "SELECT * FROM turnos WHERE id = $1",
+      [turno_id]
+    );
+    const turno = turnoResultado.rows[0];
+
+    if (!turno) {
+      return res.status(404).json({ error: "Turno no encontrado" });
+    }
+
+    const reservaExistente = await pool.query(
+      "SELECT * FROM reservas WHERE usuario_id = $1 AND turno_id = $2",
+      [usuario_id, turno_id]
     );
 
-    if (existeReserva) {
-        return res.status(400).json({ error: "Turno ya reservado" });
+    if (reservaExistente.rows[0]) {
+      return res.status(400).json({ error: "Ya existe esa reserva" });
     }
 
-    const cantidadReservas = reservas.filter(r => r.turno_id === turno_id).length;
-
-    if (cantidadReservas >= turno.cupo_maximo) {
-        return res.status(400).json({ error: "Turno lleno" });
-    }
-
-    const nuevaReserva = {
-        id: reservas.length + 1,
-        usuario_id,
-        turno_id,
-        estado: "reservado"
-    };
-
-    reservas.push(nuevaReserva);
-
-    res.json({ ok: true, reserva: nuevaReserva });
-});
-
-app.post("/api/checkin", (req, res) => {
-    const { usuario_id, turno_id, codigo_qr} = req.body;
-    if (!usuario_id || !turno_id || !codigo_qr) {
-        return res.status(400).json({ error: "Faltan datos" });
-    }
-   if (codigo_qr !== "JJB-ACADEMIA-2026"){
-    return res.status(400).json({ error: "QR no concuerda"});
-   };
-   const reserva = reservas.find(r =>
-    r.usuario_id === usuario_id && r.turno_id === turno_id
+    const cantidadResultado = await pool.query(
+      "SELECT COUNT(*) FROM reservas WHERE turno_id = $1",
+      [turno_id]
     );
-   if (!reserva){
-    return res.status(400).json({ error: "Reserva no existe"})
-   }
-   if (reserva.estado === "presente") {
-    return res.status(400).json({ error: "Ya fue registrado como presente" });
+    const cantidad = Number(cantidadResultado.rows[0].count);
+
+    if (cantidad >= turno.cupo_maximo) {
+      return res.status(400).json({ error: "Turno lleno" });
     }
-   reserva.estado = "presente";
-   res.json({ ok: true });
+
+    const nuevaReserva = await pool.query(
+      `INSERT INTO reservas (usuario_id, turno_id, estado)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [usuario_id, turno_id, "reservado"]
+    );
+
+    res.json({ ok: true, reserva: nuevaReserva.rows[0] });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
 });
 
-app.delete("/api/reservas/:id", (req, res) => {
+app.post("/api/checkin", verificarToken, async (req, res) => {
+  try {
+    const usuario_id = req.usuario.id;
+    const { turno_id, codigo_qr } = req.body;
+
+    if (!turno_id || !codigo_qr) {
+      return res.status(400).json({ error: "Faltan datos" });
+    }
+
+    if (codigo_qr !== "JJB-ACADEMIA-2026") {
+      return res.status(400).json({ error: "QR no concuerda" });
+    }
+
+    const reservaResultado = await pool.query(
+      "SELECT * FROM reservas WHERE usuario_id = $1 AND turno_id = $2",
+      [usuario_id, turno_id]
+    );
+
+    const reserva = reservaResultado.rows[0];
+
+    if (!reserva) {
+      return res.status(400).json({ error: "Reserva no existe" });
+    }
+
+    if (reserva.estado === "presente") {
+      return res.status(400).json({ error: "Ya fue registrado como presente" });
+    }
+
+    const actualizada = await pool.query(
+      `UPDATE reservas
+       SET estado = $1
+       WHERE id = $2
+       RETURNING *`,
+      ["presente", reserva.id]
+    );
+
+    res.json({
+      ok: true,
+      reserva: actualizada.rows[0]
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+});
+
+app.delete("/api/reservas/:id", verificarToken, async (req, res) => {
+  try {
     const id = Number(req.params.id);
+    const usuario_id = req.usuario.id;
+    const rol = req.usuario.rol;
 
     if (isNaN(id)) {
-        return res.status(400).json({ error: "ID no identificable" });
+      return res.status(400).json({ error: "ID no identificable" });
     }
 
-    const index = reservas.findIndex(r => r.id === id);
+    const reservaResultado = await pool.query(
+      "SELECT * FROM reservas WHERE id = $1",
+      [id]
+    );
 
-    if (index === -1) {
-        return res.status(404).json({ error: "Reserva no encontrada" });
+    const reserva = reservaResultado.rows[0];
+
+    if (!reserva) {
+      return res.status(404).json({ error: "Reserva no encontrada" });
     }
 
-    reservas.splice(index, 1);
+    if (rol !== "profesor" && reserva.usuario_id !== usuario_id) {
+      return res.status(403).json({ error: "No podés cancelar una reserva ajena" });
+    }
 
-    res.json({ ok: true });
+    await pool.query(
+      "DELETE FROM reservas WHERE id = $1",
+      [id]
+    );
+
+    res.json({ ok: true, mensaje: "Reserva cancelada correctamente" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
 });
 
-app.listen(3000, () => {
-    console.log("Servidor en http://localhost:3000");
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`Servidor en puerto ${PORT}`);
 });

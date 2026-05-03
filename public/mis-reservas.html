@@ -1,18 +1,51 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <title>Mis reservas</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mis reservas - Academia JJB</title>
   <style>
     body {
-      font-family: Arial;
+      font-family: Arial, sans-serif;
       background: #f3f4f6;
       margin: 0;
       padding: 20px;
+      color: #111827;
     }
 
     h1 {
       text-align: center;
+      margin-bottom: 10px;
+    }
+
+    .subtitulo {
+      text-align: center;
+      color: #6b7280;
+      margin-bottom: 20px;
+    }
+
+    .usuario-actual {
+      max-width: 800px;
+      margin: 0 auto 20px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      background: #dbeafe;
+      color: #1e3a8a;
+      font-size: 14px;
+    }
+
+    .mensaje {
+      max-width: 800px;
+      margin: 0 auto 20px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      background: #e5e7eb;
+      font-size: 14px;
+    }
+
+    .lista {
+      max-width: 800px;
+      margin: 0 auto;
     }
 
     .card {
@@ -20,60 +53,143 @@
       padding: 16px;
       border-radius: 12px;
       margin-bottom: 12px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+    }
+
+    .dato {
+      margin: 6px 0;
     }
 
     button {
-      margin-top: 10px;
-      padding: 8px 12px;
+      margin-top: 12px;
+      padding: 10px 14px;
       border: none;
-      background: red;
+      background: #dc2626;
       color: white;
-      border-radius: 6px;
+      border-radius: 8px;
       cursor: pointer;
+    }
+
+    button:hover {
+      background: #b91c1c;
     }
 
     .volver {
       display: block;
-      margin-bottom: 20px;
+      max-width: 800px;
+      margin: 0 auto 20px;
       text-decoration: none;
-      color: blue;
+      color: #2563eb;
+      font-weight: bold;
+    }
+
+    .vacio {
+      background: white;
+      padding: 16px;
+      border-radius: 12px;
+      color: #6b7280;
+      text-align: center;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
     }
   </style>
 </head>
 <body>
 
-<a class="volver" href="/">← Volver</a>
+  <a class="volver" href="/">← Volver al inicio</a>
 
-<h1>Mis reservas</h1>
+  <h1>Mis reservas</h1>
+  <p class="subtitulo">Consultá y cancelá tus reservas</p>
 
-<div id="lista"></div>
+  <div id="usuarioActual" class="usuario-actual"></div>
+  <div id="mensaje" class="mensaje">Cargando reservas...</div>
 
-<script>
-const usuarioId = 1;
-const lista = document.getElementById("lista");
+  <div id="lista" class="lista"></div>
 
-async function cargar() {
-    const res = await fetch(`/api/mis-reservas/${usuarioId}`);
-    const data = await res.json();
+  <script>
+    const lista = document.getElementById("lista");
+    const mensaje = document.getElementById("mensaje");
+    const usuarioActual = document.getElementById("usuarioActual");
 
-    lista.innerHTML = data.map(r => `
-        <div class="card">
-            <strong>Turno ${r.turno_id}</strong><br>
-            Fecha: ${r.fecha}<br>
-            Hora: ${r.hora}<br>
-            Estado: ${r.estado}<br>
-            <button onclick="cancelar(${r.id})">Cancelar</button>
-        </div>
-    `).join("");
-}
+    const usuarioGuardado = localStorage.getItem("usuario");
+
+    if (!usuarioGuardado) {
+      alert("Tenés que iniciar sesión primero.");
+      window.location.href = "/login.html";
+    }
+
+    const usuario = JSON.parse(usuarioGuardado);
+    const usuarioId = usuario.id;
+
+    usuarioActual.textContent = `Usuario actual: ${usuario.nombre} ${usuario.apellido}`;
+
+    async function cargar() {
+      mensaje.textContent = "Cargando reservas...";
+
+      try {
+        const res = await fetch("/api/mis-reservas", {
+  headers: {
+    "Authorization": "Bearer " + localStorage.getItem("token")
+  }
+});
+        const data = await res.json();
+
+        if (!res.ok) {
+          mensaje.textContent = data.error || "No se pudieron cargar las reservas.";
+          return;
+        }
+
+        if (!data.length) {
+          lista.innerHTML = `<div class="vacio">No tenés reservas todavía.</div>`;
+          mensaje.textContent = "No hay reservas registradas.";
+          return;
+        }
+
+        lista.innerHTML = data.map(r => `
+          <div class="card">
+            <div class="dato"><strong>Reserva #:</strong> ${r.id}</div>
+            <div class="dato"><strong>Turno:</strong> ${r.turno_id}</div>
+            <div class="dato"><strong>Fecha:</strong> ${r.fecha}</div>
+            <div class="dato"><strong>Hora:</strong> ${r.hora}</div>
+            <div class="dato"><strong>Estado:</strong> ${r.estado}</div>
+            <button onclick="cancelar(${r.id})">Cancelar reserva</button>
+          </div>
+        `).join("");
+
+        mensaje.textContent = "Reservas cargadas correctamente.";
+      } catch (error) {
+        mensaje.textContent = "Error al conectar con el servidor.";
+        console.error(error);
+      }
+    }
 
 async function cancelar(id) {
-    await fetch(`/api/reservas/${id}`, { method: "DELETE" });
+  const confirmar = confirm("¿Seguro que querés cancelar la reserva?");
+  if (!confirmar) return;
+
+  try {
+   const res = await fetch(`/api/reservas/${id}`, {
+  method: "DELETE",
+  headers: {
+    "Authorization": "Bearer " + localStorage.getItem("token")
+  }
+});
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      mensaje.textContent = data.error || "No se pudo cancelar la reserva.";
+      return;
+    }
+
+    mensaje.textContent = "Reserva cancelada correctamente ✅";
     cargar();
+  } catch (error) {
+    mensaje.textContent = "Error al conectar con el servidor.";
+    console.error(error);
+  }
 }
 
-cargar();
-</script>
-
+    cargar();
+  </script>
 </body>
 </html>

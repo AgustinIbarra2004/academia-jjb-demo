@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Check-in - Academia JJB</title>
+  <title>Check-in QR - Academia JJB</title>
   <style>
     * {
       box-sizing: border-box;
@@ -24,25 +24,41 @@
     }
 
     main {
-      max-width: 700px;
+      max-width: 760px;
       margin: 30px auto;
       padding: 0 16px;
+    }
+
+    .volver {
+      display: inline-block;
+      margin-bottom: 16px;
+      text-decoration: none;
+      color: #2563eb;
+      font-weight: bold;
+    }
+
+    .usuario-actual,
+    .mensaje {
+      margin-bottom: 16px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 14px;
+    }
+
+    .usuario-actual {
+      background: #dbeafe;
+      color: #1e3a8a;
+    }
+
+    .mensaje {
+      background: #e5e7eb;
     }
 
     .card {
       background: white;
       border-radius: 14px;
-      padding: 24px;
+      padding: 20px;
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
-    }
-
-    .mensaje {
-      margin-bottom: 20px;
-      padding: 12px 16px;
-      border-radius: 10px;
-      background: #e5e7eb;
-      color: #111827;
-      font-size: 14px;
     }
 
     label {
@@ -52,8 +68,8 @@
       font-weight: bold;
     }
 
-    input,
-    select {
+    select,
+    input {
       width: 100%;
       padding: 12px;
       border: 1px solid #d1d5db;
@@ -62,7 +78,7 @@
     }
 
     button {
-      margin-top: 18px;
+      margin-top: 14px;
       width: 100%;
       border: none;
       border-radius: 10px;
@@ -77,49 +93,90 @@
       background: #1d4ed8;
     }
 
-    .dato {
-      margin: 8px 0;
-      color: #374151;
-      font-size: 15px;
+    .btn-danger {
+      background: #dc2626;
+    }
+
+    .btn-danger:hover {
+      background: #b91c1c;
+    }
+
+    #reader {
+      margin-top: 18px;
+      width: 100%;
+      overflow: hidden;
+      border-radius: 12px;
+    }
+
+    .ayuda {
+      color: #6b7280;
+      font-size: 14px;
+      margin-top: 10px;
+      line-height: 1.4;
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>Check-in de llegada</h1>
+    <h1>Check-in con QR</h1>
     <p>Academia JJB</p>
   </header>
 
   <main>
-    <div id="mensaje" class="mensaje">Cargando turnos...</div>
+    <a class="volver" href="/">← Volver al inicio</a>
+
+    <div id="usuarioActual" class="usuario-actual"></div>
+    <div id="mensaje" class="mensaje">Cargando...</div>
 
     <div class="card">
-      <div class="dato">
-        Esta pantalla simula el escaneo del QR de la academia.
-      </div>
-
       <label for="turno">Seleccionar turno</label>
       <select id="turno"></select>
 
-      <label for="codigo_qr">Código QR</label>
+      <p class="ayuda">
+        Tocá “Iniciar cámara”, apuntá al QR pegado en la academia y el sistema hará el check-in automáticamente.
+      </p>
+
+      <button id="btnIniciar">Iniciar cámara</button>
+      <button id="btnDetener" class="btn-danger">Detener cámara</button>
+
+      <div id="reader"></div>
+
+      <label for="codigoManual">Código manual</label>
       <input
         type="text"
-        id="codigo_qr"
+        id="codigoManual"
         value="JJB-ACADEMIA-2026"
-        placeholder="Ingresá el código QR"
+        placeholder="Código QR"
       />
 
-      <button id="btnCheckin">Confirmar llegada</button>
+      <button id="btnManual">Confirmar manualmente</button>
     </div>
   </main>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+
   <script>
     const mensaje = document.getElementById("mensaje");
+    const usuarioActual = document.getElementById("usuarioActual");
     const selectTurno = document.getElementById("turno");
-    const inputQr = document.getElementById("codigo_qr");
-    const btnCheckin = document.getElementById("btnCheckin");
+    const btnIniciar = document.getElementById("btnIniciar");
+    const btnDetener = document.getElementById("btnDetener");
+    const btnManual = document.getElementById("btnManual");
+    const codigoManual = document.getElementById("codigoManual");
 
-    const usuarioId = 1;
+    const usuarioGuardado = localStorage.getItem("usuario");
+    const token = localStorage.getItem("token");
+
+    if (!usuarioGuardado || !token) {
+      alert("Tenés que iniciar sesión primero.");
+      window.location.href = "/login.html";
+    }
+
+    const usuario = JSON.parse(usuarioGuardado);
+    usuarioActual.textContent = `Usuario actual: ${usuario.nombre} ${usuario.apellido}`;
+
+    let html5QrCode = null;
+    let camaraActiva = false;
 
     async function cargarTurnos() {
       mensaje.textContent = "Cargando turnos...";
@@ -128,29 +185,24 @@
         const respuesta = await fetch("/api/turnos");
         const turnos = await respuesta.json();
 
-        selectTurno.innerHTML = turnos
-          .map(
-            turno => `
-              <option value="${turno.id}">
-                Turno ${turno.id} - ${turno.fecha} ${turno.hora}
-              </option>
-            `
-          )
-          .join("");
+        selectTurno.innerHTML = turnos.map(turno => `
+          <option value="${turno.id}">
+            Turno ${turno.id} - ${turno.fecha} ${turno.hora}
+          </option>
+        `).join("");
 
-        mensaje.textContent = "Seleccioná tu turno y confirmá la llegada.";
+        mensaje.textContent = "Seleccioná un turno y escaneá el QR.";
       } catch (error) {
-        mensaje.textContent = "Error al cargar los turnos.";
+        mensaje.textContent = "Error al cargar turnos.";
         console.error(error);
       }
     }
 
-    async function hacerCheckin() {
+    async function hacerCheckin(codigoQr) {
       const turnoId = Number(selectTurno.value);
-      const codigoQr = inputQr.value.trim();
 
       if (!turnoId || !codigoQr) {
-        mensaje.textContent = "Faltan datos para hacer el check-in.";
+        mensaje.textContent = "Faltan datos para hacer check-in.";
         return;
       }
 
@@ -158,10 +210,10 @@
         const respuesta = await fetch("/api/checkin", {
           method: "POST",
           headers: {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + token
           },
           body: JSON.stringify({
-            usuario_id: usuarioId,
             turno_id: turnoId,
             codigo_qr: codigoQr
           })
@@ -170,18 +222,69 @@
         const data = await respuesta.json();
 
         if (!respuesta.ok) {
-          mensaje.textContent = data.error || "No se pudo registrar la llegada.";
+          mensaje.textContent = data.error || "No se pudo hacer check-in.";
           return;
         }
 
-        mensaje.textContent = `Check-in registrado correctamente para el turno ${turnoId}.`;
+        mensaje.textContent = `Check-in registrado correctamente ✅ Turno ${turnoId}`;
+
+        if (camaraActiva) {
+          await detenerCamara();
+        }
       } catch (error) {
         mensaje.textContent = "Error al conectar con el servidor.";
         console.error(error);
       }
     }
 
-    btnCheckin.addEventListener("click", hacerCheckin);
+    async function iniciarCamara() {
+      if (camaraActiva) return;
+
+      mensaje.textContent = "Iniciando cámara...";
+
+      try {
+        html5QrCode = new Html5Qrcode("reader");
+
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          {
+            fps: 10,
+            qrbox: { width: 250, height: 250 }
+          },
+          async (decodedText) => {
+            mensaje.textContent = `QR detectado: ${decodedText}`;
+            await hacerCheckin(decodedText);
+          },
+          () => {}
+        );
+
+        camaraActiva = true;
+        mensaje.textContent = "Cámara activa. Apuntá al QR.";
+      } catch (error) {
+        mensaje.textContent = "No se pudo iniciar la cámara. Revisá permisos o usá HTTPS.";
+        console.error(error);
+      }
+    }
+
+    async function detenerCamara() {
+      if (!html5QrCode || !camaraActiva) return;
+
+      try {
+        await html5QrCode.stop();
+        html5QrCode.clear();
+        camaraActiva = false;
+        mensaje.textContent = "Cámara detenida.";
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    btnIniciar.addEventListener("click", iniciarCamara);
+    btnDetener.addEventListener("click", detenerCamara);
+
+    btnManual.addEventListener("click", () => {
+      hacerCheckin(codigoManual.value.trim());
+    });
 
     cargarTurnos();
   </script>

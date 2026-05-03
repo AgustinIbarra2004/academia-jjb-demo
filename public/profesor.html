@@ -39,6 +39,23 @@
       padding: 0 16px 30px;
     }
 
+    .volver {
+      display: inline-block;
+      margin-bottom: 18px;
+      text-decoration: none;
+      color: #2563eb;
+      font-weight: bold;
+    }
+
+    .usuario-actual {
+      margin-bottom: 20px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      background: #dbeafe;
+      color: #1e3a8a;
+      font-size: 14px;
+    }
+
     .top-bar {
       display: flex;
       justify-content: space-between;
@@ -142,14 +159,6 @@
       font-style: italic;
     }
 
-    .volver {
-      display: inline-block;
-      margin-bottom: 18px;
-      text-decoration: none;
-      color: #2563eb;
-      font-weight: bold;
-    }
-
     @media (max-width: 768px) {
       .grid {
         grid-template-columns: 1fr;
@@ -165,6 +174,8 @@
 
   <main>
     <a class="volver" href="/">← Volver al inicio</a>
+
+    <div id="usuarioActual" class="usuario-actual"></div>
 
     <div class="top-bar">
       <div id="estado" class="estado">Cargando datos...</div>
@@ -203,6 +214,23 @@
     const btnRecargar = document.getElementById("btnRecargar");
     const totalReservados = document.getElementById("totalReservados");
     const totalPresentes = document.getElementById("totalPresentes");
+    const usuarioActual = document.getElementById("usuarioActual");
+
+    const usuarioGuardado = localStorage.getItem("usuario");
+
+    if (!usuarioGuardado) {
+      alert("Tenés que iniciar sesión primero.");
+      window.location.href = "/login.html";
+    }
+
+    const usuario = JSON.parse(usuarioGuardado);
+
+    if (usuario.rol !== "profesor") {
+      alert("No tenés permiso para entrar al panel del profesor.");
+      window.location.href = "/";
+    }
+
+    usuarioActual.textContent = `Profesor actual: ${usuario.nombre} ${usuario.apellido}`;
 
     function crearItem(persona) {
       return `
@@ -230,6 +258,11 @@
       try {
         const respuesta = await fetch("/api/profesor/reservas");
         const data = await respuesta.json();
+
+        if (!respuesta.ok) {
+          estado.textContent = data.error || "No se pudieron cargar los datos.";
+          return;
+        }
 
         const reservados = data.reservados || [];
         const presentes = data.presentes || [];

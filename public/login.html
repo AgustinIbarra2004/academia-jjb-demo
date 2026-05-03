@@ -93,15 +93,6 @@
       font-size: 14px;
       margin: 0 8px;
     }
-
-    .usuario-box {
-      margin-top: 16px;
-      padding: 12px;
-      border-radius: 10px;
-      background: #eef2ff;
-      font-size: 14px;
-      display: none;
-    }
   </style>
 </head>
 <body>
@@ -118,7 +109,6 @@
     <button id="btnLogin">Ingresar</button>
 
     <div id="mensaje" class="mensaje">Ingresá tus datos para entrar.</div>
-    <div id="usuarioBox" class="usuario-box"></div>
 
     <div class="links">
       <a href="/register.html">Crear cuenta</a>
@@ -131,7 +121,6 @@
     const password = document.getElementById("password");
     const btnLogin = document.getElementById("btnLogin");
     const mensaje = document.getElementById("mensaje");
-    const usuarioBox = document.getElementById("usuarioBox");
 
     async function loginUsuario() {
       const datos = {
@@ -141,7 +130,6 @@
 
       if (!datos.email || !datos.password) {
         mensaje.textContent = "Completá email y contraseña.";
-        usuarioBox.style.display = "none";
         return;
       }
 
@@ -158,22 +146,19 @@
 
         if (!respuesta.ok) {
           mensaje.textContent = data.error || "No se pudo iniciar sesión.";
-          usuarioBox.style.display = "none";
           return;
         }
 
-        mensaje.textContent = "Login correcto.";
+       localStorage.setItem("usuario", JSON.stringify(data.usuario));
+       localStorage.setItem("token", data.token);
 
-        usuarioBox.style.display = "block";
-        usuarioBox.innerHTML = `
-          <strong>Usuario:</strong> ${data.usuario.nombre} ${data.usuario.apellido}<br>
-          <strong>Email:</strong> ${data.usuario.email}<br>
-          <strong>Rol:</strong> ${data.usuario.rol}<br>
-          <strong>Estado:</strong> ${data.usuario.estado}
-        `;
+       mensaje.textContent = "Login correcto  Redirigiendo...";  
+
+        setTimeout(() => {
+          window.location.href = "/";
+        }, 800);
       } catch (error) {
         mensaje.textContent = "Error al conectar con el servidor.";
-        usuarioBox.style.display = "none";
         console.error(error);
       }
     }

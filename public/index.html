@@ -60,6 +60,34 @@
       line-height: 1.5;
     }
 
+    .usuario-box {
+      margin-top: 18px;
+      padding: 16px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .usuario-box strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 18px;
+    }
+
+    .usuario-box button {
+      margin-top: 12px;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      background: #dc2626;
+      color: white;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .usuario-box button:hover {
+      background: #b91c1c;
+    }
+
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -128,55 +156,87 @@
         Esta aplicación permite registrar alumnos, iniciar sesión, reservar turnos,
         confirmar llegada a la academia y visualizar la información desde el panel del profesor.
       </p>
+
+      <div id="usuarioBox" class="usuario-box"></div>
     </section>
 
-    <section class="grid">
-      <article class="card">
-        <h3>Registro</h3>
-        <p>Creá una cuenta de alumno para acceder al sistema.</p>
-        <a href="/register.html">Ir al registro</a>
-      </article>
-
-      <article class="card">
-        <h3>Login</h3>
-        <p>Ingresá con tu cuenta para usar la aplicación.</p>
-        <a href="/login.html">Ir al login</a>
-      </article>
-
-      <article class="card">
-        <h3>Turnos</h3>
-        <p>Visualizá los turnos disponibles y reservá tu lugar.</p>
-        <a href="/turnos.html">Ver turnos</a>
-      </article>
-
-      <article class="card">
-        <h3>Check-in</h3>
-        <p>Confirmá tu llegada con el código QR de la academia.</p>
-        <a href="/checkin.html">Hacer check-in</a>
-      </article>
-
-      <article class="card">
-        <h3>Panel del profesor</h3>
-        <p>Consultá los alumnos reservados y los presentes.</p>
-        <a href="/profesor.html">Abrir panel</a>
-      </article>
-
-      <article class="card">
-        <h3>API Turnos</h3>
-        <p>Verificá directamente la información de turnos desde el backend.</p>
-        <a href="/api/turnos">Abrir API</a>
-      </article>
-      <article class="card">
-        <h3>Mis reservas</h3>
-        <p>Consultá y cancelá tus turnos reservados.</p>
-        <a href="/mis-reservas.html">Ver mis reservas</a>
-      </article>
-      
-    </section>
+    <section id="gridOpciones" class="grid"></section>
   </main>
 
   <footer>
     Academia JJB · Demo del sistema de asistencia y reservas
   </footer>
+
+  <script>
+    const usuarioBox = document.getElementById("usuarioBox");
+    const gridOpciones = document.getElementById("gridOpciones");
+
+    function cardHTML(titulo, texto, linkTexto, href) {
+      return `
+        <article class="card">
+          <h3>${titulo}</h3>
+          <p>${texto}</p>
+          <a href="${href}">${linkTexto}</a>
+        </article>
+      `;
+    }
+
+    function renderOpciones(usuario) {
+      if (!usuario) {
+        gridOpciones.innerHTML = `
+          ${cardHTML("Registro", "Creá una cuenta de alumno para acceder al sistema.", "Ir al registro", "/register.html")}
+          ${cardHTML("Login", "Ingresá con tu cuenta para usar la aplicación.", "Ir al login", "/login.html")}
+          ${cardHTML("Turnos", "Visualizá los turnos disponibles y reservá tu lugar.", "Ver turnos", "/turnos.html")}
+        `;
+        return;
+      }
+
+      if (usuario.rol === "profesor") {
+        gridOpciones.innerHTML = `
+          ${cardHTML("Panel del profesor", "Consultá los alumnos reservados y los presentes.", "Abrir panel", "/profesor.html")}
+          ${cardHTML("Turnos", "Visualizá los turnos disponibles del sistema.", "Ver turnos", "/turnos.html")}
+          ${cardHTML("Check-in", "Probá el flujo de confirmación de llegada.", "Hacer check-in", "/checkin.html")}
+        `;
+        return;
+      }
+
+      gridOpciones.innerHTML = `
+        ${cardHTML("Turnos", "Visualizá los turnos disponibles y reservá tu lugar.", "Ver turnos", "/turnos.html")}
+        ${cardHTML("Mis reservas", "Consultá y cancelá tus turnos reservados.", "Ver mis reservas", "/mis-reservas.html")}
+        ${cardHTML("Check-in", "Confirmá tu llegada con el código QR de la academia.", "Hacer check-in", "/checkin.html")}
+      `;
+    }
+
+    function cargarUsuario() {
+      const usuarioGuardado = localStorage.getItem("usuario");
+
+      if (!usuarioGuardado) {
+        usuarioBox.innerHTML = `
+          <strong>No hay sesión iniciada</strong>
+          <span>Podés registrarte o iniciar sesión para usar la aplicación.</span>
+        `;
+        renderOpciones(null);
+        return;
+      }
+
+      const usuario = JSON.parse(usuarioGuardado);
+
+      usuarioBox.innerHTML = `
+        <strong>Sesión iniciada</strong>
+        <span>${usuario.nombre} ${usuario.apellido} · ${usuario.email} · Rol: ${usuario.rol}</span>
+        <button id="btnLogout">Cerrar sesión</button>
+      `;
+
+      renderOpciones(usuario);
+
+      const btnLogout = document.getElementById("btnLogout");
+      btnLogout.addEventListener("click", () => {
+        localStorage.removeItem("usuario");
+        window.location.reload();
+      });
+    }
+
+    cargarUsuario();
+  </script>
 </body>
 </html>

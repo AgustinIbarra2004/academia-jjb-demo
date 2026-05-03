@@ -159,11 +159,16 @@
           return;
         }
 
-        mensaje.textContent = "Usuario registrado correctamente.";
+        mensaje.textContent = "Usuario registrado correctamente. Ahora podés iniciar sesión.";
+
         nombre.value = "";
         apellido.value = "";
         email.value = "";
         password.value = "";
+
+        setTimeout(() => {
+          window.location.href = "/login.html";
+        }, 1200);
       } catch (error) {
         mensaje.textContent = "Error al conectar con el servidor.";
         console.error(error);

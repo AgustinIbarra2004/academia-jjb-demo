@@ -45,6 +45,15 @@
       font-size: 14px;
     }
 
+    .usuario-actual {
+      margin-bottom: 20px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      background: #dbeafe;
+      color: #1e3a8a;
+      font-size: 14px;
+    }
+
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -106,90 +115,137 @@
   <main>
     <a class="volver" href="/">← Volver al inicio</a>
 
+    <div id="usuarioActual" class="usuario-actual"></div>
     <div id="mensaje" class="mensaje">Cargando turnos...</div>
     <div id="contenedorTurnos" class="grid"></div>
   </main>
 
-  <script>
-    const contenedorTurnos = document.getElementById("contenedorTurnos");
-    const mensaje = document.getElementById("mensaje");
+ <script>
+  const contenedorTurnos = document.getElementById("contenedorTurnos");
+  const mensaje = document.getElementById("mensaje");
+  const usuarioActual = document.getElementById("usuarioActual");
 
-    const usuarioId = 1;
+  const usuarioGuardado = localStorage.getItem("usuario");
 
-    function crearCardTurno(turno) {
-      const sinLugar = turno.disponibles <= 0;
+  if (!usuarioGuardado) {
+    alert("Tenés que iniciar sesión primero.");
+    window.location.href = "/login.html";
+  }
 
-      return `
-        <div class="card">
-          <h2>Turno #${turno.id}</h2>
-          <div class="dato"><strong>Fecha:</strong> ${turno.fecha}</div>
-          <div class="dato"><strong>Hora:</strong> ${turno.hora}</div>
-          <div class="dato"><strong>Cupo:</strong> ${turno.cupo_maximo}</div>
-          <div class="dato"><strong>Ocupados:</strong> ${turno.ocupados}</div>
-          <div class="dato">
-            <strong>Disponibles:</strong> 
-            <span class="${sinLugar ? "ocupado" : ""}">
-              ${turno.disponibles}
-            </span>
-          </div>
+  const usuario = JSON.parse(usuarioGuardado);
 
-          ${
-            sinLugar
-              ? `<button disabled>Sin cupo</button>`
-              : `<button onclick="reservarTurno(${turno.id})">Reservar turno</button>`
-          }
-        </div>
-      `;
+  usuarioActual.textContent = `Usuario actual: ${usuario.nombre} ${usuario.apellido}`;
+
+  let misReservas = [];
+
+  async function cargarTurnos() {
+    mensaje.textContent = "Cargando turnos...";
+
+    try {
+      await cargarMisReservas();
+
+      const res = await fetch("/api/turnos");
+      const turnos = await res.json();
+
+      contenedorTurnos.innerHTML = turnos.map(crearCardTurno).join("");
+
+      mensaje.textContent = "Turnos cargados correctamente.";
+    } catch (error) {
+      mensaje.textContent = "Error al cargar turnos.";
+      console.error(error);
     }
+  }
 
-    async function cargarTurnos() {
-      mensaje.textContent = "Cargando turnos...";
-
-      try {
-        const respuesta = await fetch("/api/turnos");
-        const turnos = await respuesta.json();
-
-        contenedorTurnos.innerHTML = turnos.map(crearCardTurno).join("");
-        mensaje.textContent = "Elegí un turno para reservar.";
-      } catch (error) {
-        mensaje.textContent = "Error al cargar los turnos.";
-        console.error(error);
-      }
-    }
-
-    async function reservarTurno(turnoId) {
-      mensaje.textContent = "Procesando reserva...";
-
-      try {
-        const respuesta = await fetch("/api/reservas", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            usuario_id: usuarioId,
-            turno_id: turnoId
-          })
-        });
-
-        const data = await respuesta.json();
-
-        if (!respuesta.ok) {
-          mensaje.textContent = data.error || "No se pudo reservar.";
-          return;
+  async function cargarMisReservas() {
+    try {
+      const res = await fetch("/api/mis-reservas", {
+        headers: {
+          "Authorization": "Bearer " + localStorage.getItem("token")
         }
+      });
 
-        mensaje.textContent = `Reserva creada correctamente para el turno ${turnoId}.`;
+      const data = await res.json();
 
-        // 🔥 refresca los turnos automáticamente
-        cargarTurnos();
-      } catch (error) {
-        mensaje.textContent = "Error al conectar con el servidor.";
-        console.error(error);
+      if (res.ok) {
+        misReservas = data;
+      } else {
+        misReservas = [];
       }
+    } catch (error) {
+      misReservas = [];
+      console.error("Error cargando reservas", error);
+    }
+  }
+
+  function crearBotonTurno(turno) {
+    const sinLugar = turno.disponibles <= 0;
+    const miReserva = misReservas.find(r => Number(r.turno_id) === Number(turno.id));
+
+    if (miReserva && miReserva.estado === "presente") {
+      return `<button disabled>Presente ✅</button>`;
     }
 
-    cargarTurnos();
-  </script>
+    if (miReserva && miReserva.estado === "reservado") {
+      return `<button disabled>Ya reservado</button>`;
+    }
+
+    if (sinLugar) {
+      return `<button disabled>Sin cupo</button>`;
+    }
+
+    return `<button onclick="reservarTurno(${turno.id})">Reservar turno</button>`;
+  }
+
+  function crearCardTurno(turno) {
+    return `
+      <div class="card">
+        <h2>Turno #${turno.id}</h2>
+        <div class="dato"><strong>Fecha:</strong> ${turno.fecha}</div>
+        <div class="dato"><strong>Hora:</strong> ${turno.hora}</div>
+        <div class="dato"><strong>Cupo:</strong> ${turno.cupo_maximo}</div>
+        <div class="dato"><strong>Ocupados:</strong> ${turno.ocupados}</div>
+        <div class="dato">
+          <strong>Disponibles:</strong>
+          <span class="${turno.disponibles <= 0 ? "ocupado" : ""}">
+            ${turno.disponibles}
+          </span>
+        </div>
+        ${crearBotonTurno(turno)}
+      </div>
+    `;
+  }
+
+  async function reservarTurno(turnoId) {
+    mensaje.textContent = "Procesando reserva...";
+
+    try {
+      const respuesta = await fetch("/api/reservas", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + localStorage.getItem("token")
+        },
+        body: JSON.stringify({
+          turno_id: turnoId
+        })
+      });
+
+      const data = await respuesta.json();
+
+      if (!respuesta.ok) {
+        mensaje.textContent = data.error || "No se pudo reservar.";
+        return;
+      }
+
+      mensaje.textContent = `Reserva creada correctamente ✅ Turno ${turnoId}`;
+      await cargarTurnos();
+    } catch (error) {
+      mensaje.textContent = "Error al conectar con el servidor.";
+      console.error(error);
+    }
+  }
+
+  cargarTurnos();
+</script>
 </body>
 </html>
